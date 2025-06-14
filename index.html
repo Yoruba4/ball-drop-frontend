@@ -2,172 +2,213 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Box Drop Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Ball Drop Game</title>
   <style>
-    body {
+    html, body {
       margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+      background: #111;
+      color: white;
+      text-align: center;
       overflow: hidden;
-      font-family: Arial, sans-serif;
-    }
-    #ui {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: white;
-      z-index: 2;
-      font-size: 16px;
-      background: rgba(0,0,0,0.5);
-      padding: 10px;
-      border-radius: 10px;
-    }
-    #leaderboard {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 200px;
-      background: rgba(0, 0, 0, 0.6);
-      padding: 10px;
-      color: white;
-      border-radius: 10px;
-      font-size: 14px;
-      z-index: 3;
-    }
-    #leaderboard h3 {
-      margin: 0 0 5px 0;
-      font-size: 16px;
+      touch-action: none;
     }
     canvas {
+      background: #222;
       display: block;
+      margin: 0 auto;
+      border: 3px solid #fff;
+      touch-action: none;
+    }
+    #score, #timer, #userStats, #leaderboard {
+      position: absolute;
+      font-size: 16px;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 10px;
+      border-radius: 8px;
+      z-index: 10;
+    }
+    #score { top: 10px; left: 10px; }
+    #timer { top: 10px; right: 10px; }
+    #userStats { top: 45px; left: 10px; text-align: left; line-height: 1.4; }
+    #leaderboard { top: 45px; right: 10px; text-align: left; }
+
+    #startBtn {
+      margin-top: 20px;
+      padding: 12px 24px;
+      font-size: 18px;
+      background-color: #0f0;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #gameOver {
+      margin-top: 10px;
+      font-size: 18px;
     }
   </style>
 </head>
 <body>
-  <div id="ui">
-    <div>Score: <span id="score">0</span></div>
-    <div>Rank: <span id="rank">-</span></div>
-    <div>Total: <span id="total">0</span></div>
-    <div>Referrals: <span id="referrals">0</span></div>
-  </div>
+  <canvas id="gameCanvas" width="360" height="500"></canvas>
+  <div id="score">Score: 0</div>
+  <div id="timer">Time: 30</div>
+  <div id="userStats">Loading stats...</div>
+  <div id="leaderboard">Loading leaderboard...</div>
+  <button id="startBtn">Start Game</button>
+  <div id="gameOver"></div>
 
-  <div id="leaderboard">
-    <h3>🏆 Top 10</h3>
-    <ul id="leaderboardList" style="list-style: none; padding: 0;"></ul>
-  </div>
-
-  <canvas id="gameCanvas"></canvas>
-
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-    let width = window.innerWidth;
-    let height = window.innerHeight;
-    canvas.width = width;
-    canvas.height = height;
+    const backendUrl = 'https://ball-drop-backend.onrender.com';
+    const backendSecret = 'Dangutaga3540#';
 
-    const gravity = 0.3;
-    let boxes = [];
-    let score = 0;
-    let totalScore = 0;
-    let rank = "-";
-    let referrals = 0;
-    let freezeActive = false;
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreDiv = document.getElementById('score');
+    const timerDiv = document.getElementById('timer');
+    const startBtn = document.getElementById('startBtn');
+    const gameOverDiv = document.getElementById('gameOver');
+    const leaderboardDiv = document.getElementById('leaderboard');
+    const userStats = document.getElementById('userStats');
 
-    const generateBox = () => {
-      const size = 30;
-      return {
-        x: Math.random() * (width - size),
-        y: -size,
-        dy: 0,
-        color: "deepskyblue"
-      };
-    };
+    const user = Telegram.WebApp.initDataUnsafe.user || { id: 'anon', username: 'anonymous' };
+    let gameObjects = [], score = 0, timeLeft = 30, playing = false, interval, freeze = false;
 
-    const updateBoxes = () => {
-      if (freezeActive) return;
-      boxes.forEach(box => {
-        box.dy += gravity;
-        box.y += box.dy;
-      });
-      boxes = boxes.filter(box => box.y < height);
-    };
-
-    const drawBoxes = () => {
-      boxes.forEach(box => {
-        ctx.fillStyle = box.color;
-        ctx.fillRect(box.x, box.y, 30, 30);
-      });
-    };
-
-    const gameLoop = () => {
-      ctx.clearRect(0, 0, width, height);
-      updateBoxes();
-      drawBoxes();
-      requestAnimationFrame(gameLoop);
-    };
-
-    const dropInterval = setInterval(() => {
-      if (!freezeActive) {
-        boxes.push(generateBox());
-        score += 10;
-        document.getElementById("score").textContent = score;
+    class Drop {
+      constructor(type = 'ball') {
+        this.x = Math.random() * 320 + 20;
+        this.y = -20;
+        this.radius = 15;
+        this.type = type;
+        this.color = { ball: 'lime', bomb: 'red', freeze: 'cyan' }[type];
+        this.speed = 2 + Math.random() * 2;
       }
-    }, 800);
-
-    const sendScoreToBackend = async () => {
-      const tg = window.Telegram.WebApp;
-      const user = tg.initDataUnsafe.user;
-      const res = await fetch('https://ball-drop-backend.onrender.com/update-score', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          telegramId: user.id,
-          username: user.username || "Anonymous",
-          score
-        })
-      });
-      const data = await res.json();
-      totalScore = data.totalScore;
-      rank = data.rank;
-      referrals = data.referrals;
-
-      document.getElementById("total").textContent = totalScore;
-      document.getElementById("rank").textContent = rank;
-      document.getElementById("referrals").textContent = referrals;
-    };
-
-    const loadLeaderboard = async () => {
-      const res = await fetch('https://ball-drop-backend.onrender.com/leaderboard');
-      const data = await res.json();
-      const list = document.getElementById("leaderboardList");
-      list.innerHTML = "";
-      data.forEach((entry, index) => {
-        const li = document.createElement("li");
-        li.textContent = `${index + 1}. ${entry.username} – ${entry.totalScore}`;
-        list.appendChild(li);
-      });
-    };
-
-    // Trigger score save every 10 seconds
-    setInterval(() => {
-      sendScoreToBackend();
-      loadLeaderboard();
-    }, 10000);
-
-    gameLoop();
-
-    // Freeze Mechanic
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "f") {
-        freezeActive = true;
-        setTimeout(() => {
-          freezeActive = false;
-        }, 3000);
+      draw() {
+        ctx.beginPath();
+        ctx.fillStyle = this.color;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.closePath();
       }
+      update() {
+        if (!freeze) this.y += this.speed;
+        this.draw();
+      }
+    }
+
+    function spawnDrop() {
+      const rand = Math.random();
+      let type = 'ball';
+      if (rand < 0.08) type = 'bomb';
+      else if (rand < 0.16) type = 'freeze';
+      gameObjects.push(new Drop(type));
+    }
+
+    function resetGame() {
+      gameObjects = [];
+      score = 0;
+      timeLeft = 30;
+      playing = true;
+      gameOverDiv.innerHTML = '';
+      startBtn.style.display = 'none';
+      interval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft <= 0) endGame();
+      }, 1000);
+    }
+
+    function endGame() {
+      playing = false;
+      clearInterval(interval);
+      gameOverDiv.innerHTML = `Game Over! Score: ${score}`;
+      startBtn.style.display = 'block';
+      submitScore();
+    }
+
+    canvas.addEventListener('click', (e) => {
+      if (!playing) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      gameObjects.forEach((obj, index) => {
+        const dx = x - obj.x;
+        const dy = y - obj.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < obj.radius) {
+          if (obj.type === 'ball') score += 1;
+          else if (obj.type === 'bomb') endGame();
+          else if (obj.type === 'freeze') {
+            freeze = true;
+            setTimeout(() => freeze = false, 3000);
+          }
+          gameObjects.splice(index, 1);
+        }
+      });
     });
 
-    window.Telegram.WebApp.ready();
-    window.Telegram.WebApp.expand();
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (playing && Math.random() < 0.035) spawnDrop();
+      gameObjects.forEach((obj, index) => {
+        obj.update();
+        if (obj.y > canvas.height) gameObjects.splice(index, 1);
+      });
+      scoreDiv.innerHTML = `Score: ${score}`;
+      timerDiv.innerHTML = `Time: ${timeLeft}`;
+      requestAnimationFrame(gameLoop);
+    }
+
+    async function submitScore() {
+      try {
+        await fetch(`${backendUrl}/submit-score`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            username: user.username || 'anonymous',
+            score,
+            token: backendSecret,
+          }),
+        });
+        fetchLeaderboard();
+        fetchUserStats();
+      } catch (err) {
+        console.error('Score submission failed', err);
+      }
+    }
+
+    async function fetchLeaderboard() {
+      try {
+        const res = await fetch(`${backendUrl}/leaderboard`);
+        const top = await res.json();
+        leaderboardDiv.innerHTML = '<strong>🏆 Top 10</strong><br>' +
+          top.map((entry, i) => `${i + 1}. ${entry.username}: ${entry.totalScore}`).join('<br>');
+      } catch (err) {
+        leaderboardDiv.innerHTML = 'Leaderboard unavailable';
+      }
+    }
+
+    async function fetchUserStats() {
+      try {
+        const res = await fetch(`${backendUrl}/my-rank?userId=${user.id}`);
+        const data = await res.json();
+        userStats.innerHTML = `Rank: ${data.rank}<br>Total: ${data.totalScore}<br>Referrals: ${data.referrals || 0}`;
+      } catch (err) {
+        userStats.innerHTML = 'Rank: -<br>Total: 0<br>Referrals: 0';
+      }
+    }
+
+    startBtn.onclick = () => {
+      resetGame();
+    };
+
+    Telegram.WebApp.ready();
+    fetchLeaderboard();
+    fetchUserStats();
+    gameLoop();
   </script>
 </body>
 </html>
