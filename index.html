@@ -1,4 +1,5 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
@@ -21,40 +22,57 @@
       border: 3px solid #fff;
       touch-action: none;
     }
-    #score, #timer, #userStats {
+    #scoreboard {
       position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
       font-size: 16px;
       background: rgba(0,0,0,0.5);
       padding: 5px 10px;
       border-radius: 8px;
     }
-    #score { top: 10px; left: 20px; }
-    #timer { top: 10px; right: 20px; }
-    #userStats { top: 50px; left: 50%; transform: translateX(-50%); }#startBtn {
-  margin-top: 20px;
-  padding: 10px 20px;
-  font-size: 16px;
-  background-color: #0f0;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-#gameOver, #leaderboard {
-  margin-top: 10px;
-  font-size: 16px;
-}
-
+    #userStats {
+      position: absolute;
+      top: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 10px;
+      border-radius: 8px;
+    }
+    #startBtn {
+      margin-top: 20px;
+      padding: 12px 24px;
+      font-size: 18px;
+      background-color: #0f0;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #gameOver, #leaderboard {
+      margin-top: 10px;
+      font-size: 18px;
+    }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas" width="360" height="500"></canvas>
-  <div id="score">Score: 0</div>
-  <div id="timer">Time: 30</div>
+  <div id="scoreboard">
+    <div id="score">Score: 0</div>
+    <div id="timer">Time: 30</div>
+    <div id="referrals">Referrals: 0</div>
+  </div>
   <div id="userStats">Loading...</div>
   <button id="startBtn">Start Game</button>
   <div id="gameOver"></div>
-  <div id="leaderboard"></div>  <script src="https://telegram.org/js/telegram-web-app.js"></script>  <script>
+  <div id="leaderboard"></div>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
     const backendUrl = 'https://ball-drop-backend.onrender.com';
     const backendSecret = 'Dangutaga3540#';
 
@@ -62,14 +80,16 @@
     const ctx = canvas.getContext('2d');
     const scoreDiv = document.getElementById('score');
     const timerDiv = document.getElementById('timer');
+    const referralsDiv = document.getElementById('referrals');
+    const userStats = document.getElementById('userStats');
     const startBtn = document.getElementById('startBtn');
     const gameOverDiv = document.getElementById('gameOver');
     const leaderboardDiv = document.getElementById('leaderboard');
-    const userStats = document.getElementById('userStats');
 
     let user = Telegram.WebApp.initDataUnsafe.user || { id: 'anon', username: 'anonymous' };
-
+    let tgUserId = user.id;
     let gameObjects = [], score = 0, timeLeft = 30, playing = false, interval;
+    let freezeActive = false;
 
     class Drop {
       constructor(type = 'ball') {
@@ -124,7 +144,7 @@
     }
 
     canvas.addEventListener('click', (e) => {
-      if (!playing) return;
+      if (!playing || freezeActive) return;
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -135,7 +155,10 @@
         if (dist < obj.radius) {
           if (obj.type === 'ball') score += 1;
           if (obj.type === 'bomb') endGame();
-          if (obj.type === 'freeze') timeLeft += 3;
+          if (obj.type === 'freeze') {
+            freezeActive = true;
+            setTimeout(() => { freezeActive = false }, 3000);
+          }
           gameObjects.splice(index, 1);
         }
       });
@@ -143,9 +166,9 @@
 
     function gameLoop() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (playing && Math.random() < 0.03) spawnDrop();
+      if (playing && !freezeActive && Math.random() < 0.03) spawnDrop();
       gameObjects.forEach((obj, index) => {
-        obj.update();
+        if (!freezeActive) obj.update();
         if (obj.y > canvas.height) gameObjects.splice(index, 1);
       });
       scoreDiv.innerHTML = `Score: ${score}`;
@@ -155,7 +178,7 @@
 
     async function submitScore() {
       try {
-        const res = await fetch(`${backendUrl}/submit-score`, {
+        await fetch(`${backendUrl}/submit-score`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -163,9 +186,9 @@
             username: user.username || 'anonymous',
             score,
             token: backendSecret,
+            referrer: Telegram.WebApp.initDataUnsafe.start_param || null
           }),
         });
-        const result = await res.json();
         fetchLeaderboard();
         fetchUserStats();
       } catch (err) {
@@ -177,8 +200,8 @@
       try {
         const res = await fetch(`${backendUrl}/leaderboard`);
         const top = await res.json();
-        leaderboardDiv.innerHTML = '<h3>🏆 Top 10</h3>' +
-          top.map((entry, i) => `${i + 1}. ${entry.username}: ${entry.totalScore}`).join('<br>');
+        leaderboardDiv.innerHTML = '<h3>🏆 Leaderboard</h3>' +
+          top.map((entry, i) => `${i + 1}. ${entry.username || 'anonymous'}: ${entry.totalScore || 0}`).join('<br>');
       } catch (err) {
         leaderboardDiv.innerHTML = 'Failed to load leaderboard';
       }
@@ -188,12 +211,10 @@
       try {
         const res = await fetch(`${backendUrl}/my-rank?userId=${user.id}`);
         const data = await res.json();
-        const refRes = await fetch(`${backendUrl}/referrals?userId=${user.id}`);
-        const refData = await refRes.json();
-
-        userStats.innerHTML = `Rank: ${data.rank} | Total: ${data.totalScore} | Referrals: ${refData.count}`;
+        userStats.innerHTML = `Rank: ${data.rank || '-'} | Total: ${data.totalScore || 0}`;
+        referralsDiv.innerHTML = `Referrals: ${data.referrals || 0}`;
       } catch (err) {
-        userStats.innerHTML = 'Rank: - | Total: 0 | Referrals: 0';
+        userStats.innerHTML = 'Rank unavailable';
       }
     }
 
@@ -203,5 +224,6 @@
     fetchLeaderboard();
     fetchUserStats();
     gameLoop();
-  </script></body>
+  </script>
+</body>
 </html>
