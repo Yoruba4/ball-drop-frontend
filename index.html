@@ -1,218 +1,159 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Ball Drop Game</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      font-family: sans-serif;
-      background: #111;
-      color: white;
-      text-align: center;
-      overflow: hidden;
-      touch-action: none;
+<script>
+  const backendUrl = 'https://ball-drop-backend.onrender.com';
+  const backendSecret = 'Dangutaga3540#';
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const scoreDiv = document.getElementById('score');
+  const timerDiv = document.getElementById('timer');
+  const startBtn = document.getElementById('startBtn');
+  const gameOverDiv = document.getElementById('gameOver');
+  const leaderboardDiv = document.getElementById('leaderboard');
+  const userStats = document.getElementById('userStats');
+
+  let user = Telegram.WebApp.initDataUnsafe.user || { id: 'anon', username: 'anonymous' };
+
+  let gameObjects = [], score = 0, timeLeft = 30, playing = false, interval;
+
+  class Drop {
+    constructor(type = 'ball') {
+      this.x = Math.random() * 320 + 20;
+      this.y = -20;
+      this.radius = 15;
+      this.type = type;
+      this.color = { ball: 'lime', bomb: 'red', freeze: 'cyan' }[type];
+      this.speed = 2 + Math.random() * 2;
     }
-    canvas {
-      background: #222;
-      display: block;
-      margin: 0 auto;
-      border: 3px solid #fff;
-      touch-action: none;
+    draw() {
+      ctx.beginPath();
+      ctx.fillStyle = this.color;
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.closePath();
     }
-    #score, #timer, #userStats {
-      position: absolute;
-      font-size: 18px;
-      background: rgba(0,0,0,0.5);
-      padding: 5px 10px;
-      border-radius: 8px;
+    update() {
+      this.y += this.speed;
+      this.draw();
     }
-    #score { top: 10px; left: 20px; }
-    #timer { top: 10px; right: 20px; }
-    #userStats { top: 50px; left: 50%; transform: translateX(-50%); }
+  }
 
-    #startBtn {
-      margin-top: 20px;
-      padding: 12px 24px;
-      font-size: 18px;
-      background-color: #0f0;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-    }
+  function spawnDrop() {
+    const rand = Math.random();
+    let type = 'ball';
+    if (rand < 0.1) type = 'bomb';
+    else if (rand < 0.2) type = 'freeze';
+    gameObjects.push(new Drop(type));
+  }
 
-    #gameOver, #leaderboard {
-      margin-top: 10px;
-      font-size: 18px;
-    }
-  </style>
-</head>
-<body>
-  <canvas id="gameCanvas" width="360" height="500"></canvas>
-  <div id="score">Score: 0</div>
-  <div id="timer">Time: 30</div>
-  <div id="userStats">Loading...</div>
-  <button id="startBtn">Start Game</button>
-  <div id="gameOver"></div>
-  <div id="leaderboard"></div>
+  function resetGame() {
+    gameObjects = [];
+    score = 0;
+    timeLeft = 30;
+    playing = true;
+    gameOverDiv.innerHTML = '';
+    leaderboardDiv.innerHTML = '';
+    startBtn.style.display = 'none';
+    interval = setInterval(() => {
+      timeLeft--;
+      if (timeLeft <= 0) endGame();
+    }, 1000);
+  }
 
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script>
-    const backendUrl = 'https://ball-drop-backend.onrender.com';
-    const backendSecret = 'Dangutaga3540#';
+  function endGame() {
+    playing = false;
+    clearInterval(interval);
+    gameOverDiv.innerHTML = `Game Over! Final Score: ${score}`;
+    startBtn.style.display = 'block';
+    submitScore();
+  }
 
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const scoreDiv = document.getElementById('score');
-    const timerDiv = document.getElementById('timer');
-    const startBtn = document.getElementById('startBtn');
-    const gameOverDiv = document.getElementById('gameOver');
-    const leaderboardDiv = document.getElementById('leaderboard');
-    const userStats = document.getElementById('userStats');
-
-    let user = Telegram.WebApp.initDataUnsafe.user || { id: 'anon', username: 'anonymous' };
-
-    let gameObjects = [], score = 0, timeLeft = 30, playing = false, interval;
-
-    class Drop {
-      constructor(type = 'ball') {
-        this.x = Math.random() * 320 + 20;
-        this.y = -20;
-        this.radius = 15;
-        this.type = type;
-        this.color = { ball: 'lime', bomb: 'red', freeze: 'cyan' }[type];
-        this.speed = 2 + Math.random() * 2;
-      }
-      draw() {
-        ctx.beginPath();
-        ctx.fillStyle = this.color;
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.closePath();
-      }
-      update() {
-        this.y += this.speed;
-        this.draw();
-      }
-    }
-
-    function spawnDrop() {
-      const rand = Math.random();
-      let type = 'ball';
-      if (rand < 0.1) type = 'bomb';
-      else if (rand < 0.2) type = 'freeze';
-      gameObjects.push(new Drop(type));
-    }
-
-    function resetGame() {
-      gameObjects = [];
-      score = 0;
-      timeLeft = 30;
-      playing = true;
-      gameOverDiv.innerHTML = '';
-      leaderboardDiv.innerHTML = '';
-      startBtn.style.display = 'none';
-      interval = setInterval(() => {
-        timeLeft--;
-        if (timeLeft <= 0) endGame();
-      }, 1000);
-    }
-
-    function endGame() {
-      playing = false;
-      clearInterval(interval);
-      gameOverDiv.innerHTML = `Game Over! Final Score: ${score}`;
-      startBtn.style.display = 'block';
-      submitScore();
-    }
-
-    canvas.addEventListener('click', (e) => {
-      if (!playing) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      gameObjects.forEach((obj, index) => {
-        const dx = x - obj.x;
-        const dy = y - obj.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < obj.radius) {
-          if (obj.type === 'ball') score += 1;
-          if (obj.type === 'bomb') endGame();
-          if (obj.type === 'freeze') {
-            timeLeft += 3;
-          }
-          gameObjects.splice(index, 1);
+  canvas.addEventListener('click', (e) => {
+    if (!playing) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    gameObjects.forEach((obj, index) => {
+      const dx = x - obj.x;
+      const dy = y - obj.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < obj.radius) {
+        if (obj.type === 'ball') score += 1;
+        if (obj.type === 'bomb') endGame();
+        if (obj.type === 'freeze') {
+          timeLeft += 3;
         }
-      });
+        gameObjects.splice(index, 1);
+      }
     });
+  });
 
-    function gameLoop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (playing && Math.random() < 0.03) spawnDrop();
-      gameObjects.forEach((obj, index) => {
-        obj.update();
-        if (obj.y > canvas.height) gameObjects.splice(index, 1);
+  function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (playing && Math.random() < 0.03) spawnDrop();
+    gameObjects.forEach((obj, index) => {
+      obj.update();
+      if (obj.y > canvas.height) gameObjects.splice(index, 1);
+    });
+    scoreDiv.innerHTML = `Score: ${score}`;
+    timerDiv.innerHTML = `Time: ${timeLeft}`;
+    requestAnimationFrame(gameLoop);
+  }
+
+  async function submitScore() {
+    try {
+      await fetch(`${backendUrl}/submit-score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          username: user.username || 'anonymous',
+          score,
+          token: backendSecret,
+        }),
       });
-      scoreDiv.innerHTML = `Score: ${score}`;
-      timerDiv.innerHTML = `Time: ${timeLeft}`;
-      requestAnimationFrame(gameLoop);
+      fetchLeaderboard();
+      fetchUserStats();
+    } catch (err) {
+      console.error('Score submission failed', err);
     }
+  }
 
-    async function submitScore() {
-      try {
-        await fetch(`${backendUrl}/submit-score`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: user.id,
-            username: user.username || 'anonymous',
-            score,
-            token: backendSecret,
-          }),
-        });
-        fetchLeaderboard();
-        fetchUserStats();
-      } catch (err) {
-        console.error('Score submission failed', err);
+  async function fetchLeaderboard() {
+    try {
+      const res = await fetch(`${backendUrl}/leaderboard`);
+      const top = await res.json();
+      leaderboardDiv.innerHTML = '<h3>🏆 Leaderboard</h3>' +
+        top.map((entry, i) => `${i + 1}. ${entry.username}: ${entry.totalScore}`).join('<br>');
+    } catch (err) {
+      leaderboardDiv.innerHTML = 'Failed to load leaderboard';
+    }
+  }
+
+  async function fetchUserStats() {
+    try {
+      const res = await fetch(`${backendUrl}/my-rank?userId=${user.id}`);
+      const data = await res.json();
+      if (data && typeof data.totalScore === 'number' && typeof data.rank === 'number') {
+        userStats.innerHTML = `Your Rank: ${data.rank} | Total Score: ${data.totalScore}`;
+      } else {
+        userStats.innerHTML = 'Your Rank: N/A | Total Score: N/A';
       }
+    } catch (err) {
+      userStats.innerHTML = 'Rank unavailable';
     }
+  }
 
-    async function fetchLeaderboard() {
-      try {
-        const res = await fetch(`${backendUrl}/leaderboard`);
-        const top = await res.json();
-        leaderboardDiv.innerHTML = '<h3>🏆 Leaderboard</h3>' +
-          top.map((entry, i) => `${i + 1}. ${entry.username}: ${entry.totalScore}`).join('<br>');
-      } catch (err) {
-        leaderboardDiv.innerHTML = 'Failed to load leaderboard';
-      }
-    }
+  startBtn.onclick = () => {
+    resetGame();
+  };
 
-    async function fetchUserStats() {
-      try {
-        const res = await fetch(`${backendUrl}/my-rank?userId=${user.id}`);
-        const data = await res.json();
+  Telegram.WebApp.ready();
+  fetchLeaderboard();
+  fetchUserStats();
+  gameLoop();
 
-        const rank = (typeof data.rank === 'number') ? data.rank : 'N/A';
-        const totalScore = (typeof data.totalScore === 'number') ? data.totalScore : 0;
-
-        userStats.innerHTML = `Rank: ${rank} | Total Score: ${totalScore}`;
-      } catch (err) {
-        console.error('Failed to fetch user stats:', err);
-        userStats.innerHTML = 'Rank unavailable';
-      }
-    }
-
-    startBtn.onclick = () => {
-      resetGame();
-    };
-
-    Telegram.WebApp.ready();
-    fetchLeaderboard();
-    fetchUserStats();
-    gameLoop();
-  </script>
-</body>
-</html>
+  // Prevent canvas zoom/drag on mobile
+  document.addEventListener('touchmove', function (event) {
+    event.preventDefault();
+  }, { passive: false });
+</script>
