@@ -194,8 +194,13 @@
       try {
         const res = await fetch(`${backendUrl}/my-rank?userId=${user.id}`);
         const data = await res.json();
-        userStats.innerHTML = `Your Rank: ${data.rank} | Total Score: ${data.totalScore}`;
+
+        const rank = (typeof data.rank === 'number') ? data.rank : 'N/A';
+        const totalScore = (typeof data.totalScore === 'number') ? data.totalScore : 0;
+
+        userStats.innerHTML = `Rank: ${rank} | Total Score: ${totalScore}`;
       } catch (err) {
+        console.error('Failed to fetch user stats:', err);
         userStats.innerHTML = 'Rank unavailable';
       }
     }
