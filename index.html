@@ -1,217 +1,207 @@
 <!DOCTYPE html><html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ball Drop Game</title>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body {
-        font-family: sans-serif;
-        overflow: hidden;
-        background: #f9f9f9;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: flex-start;
-      }
-      #stats {
-        text-align: center;
-        margin: 10px 0;
-        font-size: 14px;
-        color: #333;
-      }
-      canvas {
-        border: 2px solid #000;
-        touch-action: manipulation;
-      }
-      #boosters {
-        margin-top: 8px;
-      }
-      .booster-button {
-        padding: 6px 12px;
-        margin: 0 5px;
-        background-color: #007bff;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      .booster-button:hover {
-        background-color: #0056b3;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="stats">
-      <div>Score: <span id="score">0</span> &nbsp;&nbsp; Top 10</div>
-      <div>Rank: <span id="rank">-</span></div>
-      <div>Total: <span id="total">0</span></div>
-      <div>Referrals: <span id="referrals">0</span></div>
-    </div>
-    <canvas id="gameCanvas" width="360" height="500"></canvas>
-    <div id="boosters">
-      <button class="booster-button" onclick="activateFreeze()">Freeze</button>
-      <button class="booster-button" onclick="activateShield()">Shield</button>
-    </div><script>
-  const canvas = document.getElementById('gameCanvas');
-  const ctx = canvas.getContext('2d');
-  const apiUrl = 'https://ball-drop-backend.onrender.com';
-
-  let score = 0;
-  let total = 0;
-  let rank = '-';
-  let referrals = 0;
-  let username = new URLSearchParams(window.location.search).get('username') || 'anonymous';
-
-  let balls = [];
-  let bombs = [];
-  let powerUps = [];
-  let player = { x: 160, y: 480, width: 40, height: 10, shield: false };
-  let isFrozen = false;
-  let freezeTimer = 0;
-
-  function updateStatsUI() {
-    document.getElementById('score').textContent = score;
-    document.getElementById('total').textContent = total;
-    document.getElementById('rank').textContent = rank;
-    document.getElementById('referrals').textContent = referrals;
-  }
-
-  function drawPlayer() {
-    ctx.fillStyle = player.shield ? 'lightgreen' : 'black';
-    ctx.fillRect(player.x, player.y, player.width, player.height);
-  }
-
-  function drawBalls() {
-    ctx.fillStyle = 'blue';
-    balls.forEach(ball => ctx.fillRect(ball.x, ball.y, 10, 10));
-  }
-
-  function drawBombs() {
-    ctx.fillStyle = 'red';
-    bombs.forEach(bomb => ctx.fillRect(bomb.x, bomb.y, 10, 10));
-  }
-
-  function drawPowerUps() {
-    ctx.fillStyle = 'green';
-    powerUps.forEach(p => ctx.fillRect(p.x, p.y, 10, 10));
-  }
-
-  function spawnEntities() {
-    if (Math.random() < 0.05) balls.push({ x: Math.random() * 350, y: 0 });
-    if (Math.random() < 0.02) bombs.push({ x: Math.random() * 350, y: 0 });
-    if (Math.random() < 0.01) powerUps.push({ x: Math.random() * 350, y: 0 });
-  }
-
-  function moveEntities() {
-    if (!isFrozen) {
-      balls.forEach(b => b.y += 2);
-      bombs.forEach(b => b.y += 2);
-      powerUps.forEach(p => p.y += 2);
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Ball Drop Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+      background: #111;
+      color: white;
+      text-align: center;
+      overflow: hidden;
+      touch-action: none;
     }
-  }
+    canvas {
+      background: #222;
+      display: block;
+      margin: 0 auto;
+      border: 3px solid #fff;
+      touch-action: none;
+    }
+    #score, #timer, #userStats {
+      position: absolute;
+      font-size: 16px;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 10px;
+      border-radius: 8px;
+    }
+    #score { top: 10px; left: 20px; }
+    #timer { top: 10px; right: 20px; }
+    #userStats { top: 50px; left: 50%; transform: translateX(-50%); }#startBtn {
+  margin-top: 20px;
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #0f0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
 
-  function checkCollisions() {
-    balls = balls.filter(ball => {
-      if (ball.y > 480 && ball.x >= player.x && ball.x <= player.x + player.width) {
-        score += 1;
-        updateStatsUI();
-        return false;
+#gameOver, #leaderboard {
+  margin-top: 10px;
+  font-size: 16px;
+}
+
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="360" height="500"></canvas>
+  <div id="score">Score: 0</div>
+  <div id="timer">Time: 30</div>
+  <div id="userStats">Loading...</div>
+  <button id="startBtn">Start Game</button>
+  <div id="gameOver"></div>
+  <div id="leaderboard"></div>  <script src="https://telegram.org/js/telegram-web-app.js"></script>  <script>
+    const backendUrl = 'https://ball-drop-backend.onrender.com';
+    const backendSecret = 'Dangutaga3540#';
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreDiv = document.getElementById('score');
+    const timerDiv = document.getElementById('timer');
+    const startBtn = document.getElementById('startBtn');
+    const gameOverDiv = document.getElementById('gameOver');
+    const leaderboardDiv = document.getElementById('leaderboard');
+    const userStats = document.getElementById('userStats');
+
+    let user = Telegram.WebApp.initDataUnsafe.user || { id: 'anon', username: 'anonymous' };
+
+    let gameObjects = [], score = 0, timeLeft = 30, playing = false, interval;
+
+    class Drop {
+      constructor(type = 'ball') {
+        this.x = Math.random() * 320 + 20;
+        this.y = -20;
+        this.radius = 15;
+        this.type = type;
+        this.color = { ball: 'lime', bomb: 'red', freeze: 'cyan' }[type];
+        this.speed = 2 + Math.random() * 2;
       }
-      return ball.y < 500;
-    });
+      draw() {
+        ctx.beginPath();
+        ctx.fillStyle = this.color;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.closePath();
+      }
+      update() {
+        this.y += this.speed;
+        this.draw();
+      }
+    }
 
-    bombs = bombs.filter(bomb => {
-      if (bomb.y > 480 && bomb.x >= player.x && bomb.x <= player.x + player.width) {
-        if (!player.shield) {
-          endGame();
-          return false;
+    function spawnDrop() {
+      const rand = Math.random();
+      let type = 'ball';
+      if (rand < 0.1) type = 'bomb';
+      else if (rand < 0.2) type = 'freeze';
+      gameObjects.push(new Drop(type));
+    }
+
+    function resetGame() {
+      gameObjects = [];
+      score = 0;
+      timeLeft = 30;
+      playing = true;
+      gameOverDiv.innerHTML = '';
+      leaderboardDiv.innerHTML = '';
+      startBtn.style.display = 'none';
+      interval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft <= 0) endGame();
+      }, 1000);
+    }
+
+    function endGame() {
+      playing = false;
+      clearInterval(interval);
+      gameOverDiv.innerHTML = `Game Over! Final Score: ${score}`;
+      startBtn.style.display = 'block';
+      submitScore();
+    }
+
+    canvas.addEventListener('click', (e) => {
+      if (!playing) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      gameObjects.forEach((obj, index) => {
+        const dx = x - obj.x;
+        const dy = y - obj.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < obj.radius) {
+          if (obj.type === 'ball') score += 1;
+          if (obj.type === 'bomb') endGame();
+          if (obj.type === 'freeze') timeLeft += 3;
+          gameObjects.splice(index, 1);
         }
-      }
-      return bomb.y < 500;
+      });
     });
 
-    powerUps = powerUps.filter(p => {
-      if (p.y > 480 && p.x >= player.x && p.x <= player.x + player.width) {
-        player.shield = true;
-        setTimeout(() => player.shield = false, 5000);
-        return false;
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (playing && Math.random() < 0.03) spawnDrop();
+      gameObjects.forEach((obj, index) => {
+        obj.update();
+        if (obj.y > canvas.height) gameObjects.splice(index, 1);
+      });
+      scoreDiv.innerHTML = `Score: ${score}`;
+      timerDiv.innerHTML = `Time: ${timeLeft}`;
+      requestAnimationFrame(gameLoop);
+    }
+
+    async function submitScore() {
+      try {
+        const res = await fetch(`${backendUrl}/submit-score`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            username: user.username || 'anonymous',
+            score,
+            token: backendSecret,
+          }),
+        });
+        const result = await res.json();
+        fetchLeaderboard();
+        fetchUserStats();
+      } catch (err) {
+        console.error('Score submission failed', err);
       }
-      return p.y < 500;
-    });
-  }
+    }
 
-  function drawGame() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawPlayer();
-    drawBalls();
-    drawBombs();
-    drawPowerUps();
-  }
+    async function fetchLeaderboard() {
+      try {
+        const res = await fetch(`${backendUrl}/leaderboard`);
+        const top = await res.json();
+        leaderboardDiv.innerHTML = '<h3>🏆 Top 10</h3>' +
+          top.map((entry, i) => `${i + 1}. ${entry.username}: ${entry.totalScore}`).join('<br>');
+      } catch (err) {
+        leaderboardDiv.innerHTML = 'Failed to load leaderboard';
+      }
+    }
 
-  function gameLoop() {
-    spawnEntities();
-    moveEntities();
-    checkCollisions();
-    drawGame();
+    async function fetchUserStats() {
+      try {
+        const res = await fetch(`${backendUrl}/my-rank?userId=${user.id}`);
+        const data = await res.json();
+        const refRes = await fetch(`${backendUrl}/referrals?userId=${user.id}`);
+        const refData = await refRes.json();
 
-    if (freezeTimer > 0) freezeTimer--;
-    if (freezeTimer === 0) isFrozen = false;
+        userStats.innerHTML = `Rank: ${data.rank} | Total: ${data.totalScore} | Referrals: ${refData.count}`;
+      } catch (err) {
+        userStats.innerHTML = 'Rank: - | Total: 0 | Referrals: 0';
+      }
+    }
 
-    requestAnimationFrame(gameLoop);
-  }
+    startBtn.onclick = () => resetGame();
 
-  function endGame() {
-    fetch(`${apiUrl}/submit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, score })
-    })
-      .then(() => fetchStats())
-      .catch(err => console.error(err));
-
-    alert('Game Over! Your score: ' + score);
-    score = 0;
-    balls = [];
-    bombs = [];
-    powerUps = [];
-  }
-
-  function fetchStats() {
-    fetch(`${apiUrl}/user/${username}`)
-      .then(res => res.json())
-      .then(data => {
-        total = data.total || 0;
-        rank = data.rank || '-';
-        referrals = data.referrals || 0;
-        updateStatsUI();
-      })
-      .catch(console.error);
-  }
-
-  function activateFreeze() {
-    isFrozen = true;
-    freezeTimer = 150; // lasts ~2.5s at 60fps
-  }
-
-  function activateShield() {
-    player.shield = true;
-    setTimeout(() => player.shield = false, 5000);
-  }
-
-  canvas.addEventListener('touchmove', (e) => {
-    const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    player.x = touch.clientX - rect.left - player.width / 2;
-  });
-
-  fetchStats();
-  gameLoop();
-</script>
-
-  </body>
+    Telegram.WebApp.ready();
+    fetchLeaderboard();
+    fetchUserStats();
+    gameLoop();
+  </script></body>
 </html>
