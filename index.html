@@ -8,190 +8,144 @@
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background-color: #f5f5f5;
+      background: #f0f0f0;
       overflow: hidden;
     }
-    #gameCanvas {
-      display: block;
-      margin: 0 auto;
-      background-color: #eef;
-      border: 2px solid #333;
+
+    #game-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: #222;
     }
-    #ui {
+
+    canvas {
+      display: block;
+      background: #444;
+    }
+
+    #hud {
       position: absolute;
       top: 10px;
       left: 10px;
-      color: #333;
-      font-weight: bold;
-      background-color: rgba(255,255,255,0.8);
-      padding: 10px;
-      border-radius: 10px;
+      color: #fff;
+      z-index: 2;
+      font-size: 16px;
     }
+
     #leaderboard {
       position: absolute;
       top: 10px;
       right: 10px;
-      width: 180px;
-      max-height: 280px;
-      overflow-y: auto;
-      background-color: rgba(255,255,255,0.85);
+      background: rgba(255, 255, 255, 0.1);
       padding: 10px;
       border-radius: 10px;
-      font-size: 14px;
-      color: #222;
+      color: white;
+      max-width: 200px;
+      z-index: 2;
+    }
+
+    .booster-button {
+      margin-top: 10px;
+      padding: 5px 10px;
+      background: #00aaff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="400" height="600"></canvas>
-  <div id="ui">
-    <div id="score">Score: 0</div>
-    <div id="userStats">Rank: -<br>Total: 0<br>Referrals: 0</div>
+  <div id="game-container">
+    <div id="hud">
+      <div id="score">Score: 0</div>
+      <div id="rank">Rank: -</div>
+      <div id="total">Total: 0</div>
+      <div id="referrals">Referrals: 0</div>
+    </div>
+
+    <div id="leaderboard">
+      <strong>Top 10</strong>
+      <ul id="leaderboard-list" style="padding-left: 18px; margin-top: 6px;"></ul>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
   </div>
-  <div id="leaderboard">Loading leaderboard...</div>
 
   <script>
-    const backendUrl = 'https://ball-drop-backend.onrender.com';
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const scoreDisplay = document.getElementById('score');
-    const userStats = document.getElementById('userStats');
-    const leaderboardDiv = document.getElementById('leaderboard');
-
-    const user = {
-      id: Telegram.WebApp.initDataUnsafe?.user?.id || Math.random().toString(36).slice(2),
-      username: Telegram.WebApp.initDataUnsafe?.user?.username || "Anonymous",
-      ref: new URLSearchParams(window.location.search).get('ref')
-    };
-
+    const apiBase = 'https://ball-drop-backend.onrender.com';
     let score = 0;
-    let balls = [];
-    let frozen = false;
+    let totalScore = 0;
 
-    function createBall() {
-      const types = ['normal', 'bomb', 'freeze'];
-      const rand = Math.random();
-      const type = rand < 0.7 ? 'normal' : rand < 0.9 ? 'bomb' : 'freeze';
-      balls.push({
-        x: Math.random() * canvas.width,
-        y: 0,
-        r: 20,
-        speed: 3 + Math.random() * 2,
-        type
-      });
-    }
+    const scoreEl = document.getElementById("score");
+    const rankEl = document.getElementById("rank");
+    const totalEl = document.getElementById("total");
+    const referralsEl = document.getElementById("referrals");
+    const leaderboardList = document.getElementById("leaderboard-list");
 
-    function drawBalls() {
-      for (let ball of balls) {
-        if (ball.type === 'normal') ctx.fillStyle = 'blue';
-        else if (ball.type === 'bomb') ctx.fillStyle = 'red';
-        else ctx.fillStyle = 'green';
+    // Load user info and leaderboard
+    async function fetchUserData() {
+      try {
+        const tg = window.Telegram.WebApp.initDataUnsafe?.user || { id: "anonymous", username: "Anonymous" };
+        const res = await fetch(`${apiBase}/user/${tg.id}`);
+        const data = await res.json();
+        totalScore = data.totalScore || 0;
+        const rank = data.rank || "-";
+        const referrals = data.referrals || 0;
 
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
-        ctx.fill();
+        totalEl.textContent = "Total: " + totalScore;
+        rankEl.textContent = "Rank: " + rank;
+        referralsEl.textContent = "Referrals: " + referrals;
+      } catch (e) {
+        console.error("Failed to load user data", e);
       }
-    }
-
-    function updateBalls() {
-      if (frozen) return;
-
-      for (let ball of balls) {
-        ball.y += ball.speed;
-      }
-    }
-
-    function checkClick(x, y) {
-      for (let i = balls.length - 1; i >= 0; i--) {
-        const b = balls[i];
-        const dx = x - b.x;
-        const dy = y - b.y;
-        if (dx * dx + dy * dy <= b.r * b.r) {
-          if (b.type === 'bomb') score = Math.max(0, score - 10);
-          else if (b.type === 'freeze') {
-            freezeGame();
-            score += 5;
-          }
-          else score += 10;
-          balls.splice(i, 1);
-          updateScoreDisplay();
-          return;
-        }
-      }
-    }
-
-    function updateScoreDisplay() {
-      scoreDisplay.textContent = `Score: ${score}`;
-    }
-
-    function freezeGame() {
-      frozen = true;
-      setTimeout(() => frozen = false, 3000);
-    }
-
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawBalls();
-    }
-
-    function gameLoop() {
-      updateBalls();
-      draw();
-      requestAnimationFrame(gameLoop);
-    }
-
-    canvas.addEventListener('click', e => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      checkClick(x, y);
-    });
-
-    setInterval(createBall, 800);
-
-    async function submitScore() {
-      await fetch(`${backendUrl}/score`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          userId: user.id,
-          username: user.username,
-          score,
-          ref: user.ref
-        })
-      });
-      score = 0;
-      updateScoreDisplay();
-      fetchLeaderboard();
-      fetchUserStats();
     }
 
     async function fetchLeaderboard() {
       try {
-        const res = await fetch(`${backendUrl}/leaderboard`);
-        const top = await res.json();
+        const res = await fetch(`${apiBase}/leaderboard`);
+        const leaderboard = await res.json();
 
-        leaderboardDiv.innerHTML = '<strong>🏆 Top 10</strong><br>' +
-          top.map((entry, i) => `${i + 1}. ${entry.username || 'anonymous'}: ${entry.totalScore || 0}`).join('<br>');
-      } catch (err) {
-        leaderboardDiv.innerHTML = 'Leaderboard unavailable';
+        leaderboardList.innerHTML = "";
+        leaderboard.forEach((entry, i) => {
+          const li = document.createElement("li");
+          li.textContent = `${i + 1}. ${entry.username} - ${entry.totalScore || 0}`;
+          leaderboardList.appendChild(li);
+        });
+      } catch (e) {
+        leaderboardList.innerHTML = "<li>Failed to load</li>";
+        console.error("Leaderboard fetch failed", e);
       }
     }
 
-    async function fetchUserStats() {
-      try {
-        const res = await fetch(`${backendUrl}/my-rank?userId=${user.id}`);
-        const data = await res.json();
-        userStats.innerHTML = `Rank: ${data.rank || '-'}<br>Total: ${data.totalScore || 0}<br>Referrals: ${data.referrals || 0}`;
-      } catch (err) {
-        userStats.innerHTML = 'Rank: -<br>Total: 0<br>Referrals: 0';
-      }
+    function updateScore(newScore) {
+      score = newScore;
+      scoreEl.textContent = "Score: " + score;
     }
 
-    setInterval(submitScore, 10000); // Submit score every 10 seconds
+    function sendScoreToBackend() {
+      const tg = window.Telegram.WebApp.initDataUnsafe?.user || { id: "anonymous", username: "Anonymous" };
+      fetch(`${apiBase}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telegramId: tg.id,
+          username: tg.username || "Anonymous",
+          score: score
+        }),
+      }).then(fetchUserData).then(fetchLeaderboard);
+    }
+
+    // Dummy game loop for demo (replace with real game)
+    let interval = setInterval(() => {
+      score += Math.floor(Math.random() * 10);
+      updateScore(score);
+      sendScoreToBackend();
+    }, 5000);
+
+    fetchUserData();
     fetchLeaderboard();
-    fetchUserStats();
-    gameLoop();
   </script>
 </body>
 </html>
