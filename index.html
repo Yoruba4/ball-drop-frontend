@@ -1,74 +1,217 @@
 <!DOCTYPE html><html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ball Drop Game</title>
-  <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-    }
-    canvas {
-      display: block;
-      background: #eef;
-    }
-    #hud {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background: rgba(255, 255, 255, 0.9);
-      padding: 10px;
-      border-radius: 8px;
-      box-shadow: 0 0 5px #aaa;
-    }
-    #leaderboard {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(255, 255, 255, 0.9);
-      padding: 10px;
-      border-radius: 8px;
-      width: 200px;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-    #leaderboard h3 {
-      margin: 0 0 5px 0;
-    }
-    .boosters {
-      margin-top: 10px;
-    }
-    .booster-btn {
-      display: inline-block;
-      margin: 5px 5px 0 0;
-      padding: 5px 10px;
-      background: #007bff;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .booster-btn:hover {
-      background: #0056b3;
-    }
-  </style>
-</head>
-<body>
-  <canvas id="gameCanvas" width="360" height="600"></canvas>
-  <div id="hud">
-    <div><strong>Score:</strong> <span id="score">0</span></div>
-    <div><strong>Rank:</strong> <span id="rank">--</span></div>
-    <div><strong>Total:</strong> <span id="totalScore">0</span></div>
-    <div><strong>Referrals:</strong> <span id="referrals">0</span></div>
-    <div class="boosters">
-      <button class="booster-btn" onclick="useFreeze()">Freeze</button>
-      <button class="booster-btn" onclick="useBombShield()">Shield</button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ball Drop Game</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: sans-serif;
+        overflow: hidden;
+        background: #f9f9f9;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+      }
+      #stats {
+        text-align: center;
+        margin: 10px 0;
+        font-size: 14px;
+        color: #333;
+      }
+      canvas {
+        border: 2px solid #000;
+        touch-action: manipulation;
+      }
+      #boosters {
+        margin-top: 8px;
+      }
+      .booster-button {
+        padding: 6px 12px;
+        margin: 0 5px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .booster-button:hover {
+        background-color: #0056b3;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stats">
+      <div>Score: <span id="score">0</span> &nbsp;&nbsp; Top 10</div>
+      <div>Rank: <span id="rank">-</span></div>
+      <div>Total: <span id="total">0</span></div>
+      <div>Referrals: <span id="referrals">0</span></div>
     </div>
-  </div>
-  <div id="leaderboard">
-    <h3>Top 10</h3>
-    <ul id="leaders" style="padding-left: 20px;"></ul>
-  </div>
-  <script>
+    <canvas id="gameCanvas" width="360" height="500"></canvas>
+    <div id="boosters">
+      <button class="booster-button" onclick="activateFreeze()">Freeze</button>
+      <button class="booster-button" onclick="activateShield()">Shield</button>
+    </div><script>
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const apiUrl = 'https://ball-drop-backend.onrender.com';
+
+  let score = 0;
+  let total = 0;
+  let rank = '-';
+  let referrals = 0;
+  let username = new URLSearchParams(window.location.search).get('username') || 'anonymous';
+
+  let balls = [];
+  let bombs = [];
+  let powerUps = [];
+  let player = { x: 160, y: 480, width: 40, height: 10, shield: false };
+  let isFrozen = false;
+  let freezeTimer = 0;
+
+  function updateStatsUI() {
+    document.getElementById('score').textContent = score;
+    document.getElementById('total').textContent = total;
+    document.getElementById('rank').textContent = rank;
+    document.getElementById('referrals').textContent = referrals;
+  }
+
+  function drawPlayer() {
+    ctx.fillStyle = player.shield ? 'lightgreen' : 'black';
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+  }
+
+  function drawBalls() {
+    ctx.fillStyle = 'blue';
+    balls.forEach(ball => ctx.fillRect(ball.x, ball.y, 10, 10));
+  }
+
+  function drawBombs() {
+    ctx.fillStyle = 'red';
+    bombs.forEach(bomb => ctx.fillRect(bomb.x, bomb.y, 10, 10));
+  }
+
+  function drawPowerUps() {
+    ctx.fillStyle = 'green';
+    powerUps.forEach(p => ctx.fillRect(p.x, p.y, 10, 10));
+  }
+
+  function spawnEntities() {
+    if (Math.random() < 0.05) balls.push({ x: Math.random() * 350, y: 0 });
+    if (Math.random() < 0.02) bombs.push({ x: Math.random() * 350, y: 0 });
+    if (Math.random() < 0.01) powerUps.push({ x: Math.random() * 350, y: 0 });
+  }
+
+  function moveEntities() {
+    if (!isFrozen) {
+      balls.forEach(b => b.y += 2);
+      bombs.forEach(b => b.y += 2);
+      powerUps.forEach(p => p.y += 2);
+    }
+  }
+
+  function checkCollisions() {
+    balls = balls.filter(ball => {
+      if (ball.y > 480 && ball.x >= player.x && ball.x <= player.x + player.width) {
+        score += 1;
+        updateStatsUI();
+        return false;
+      }
+      return ball.y < 500;
+    });
+
+    bombs = bombs.filter(bomb => {
+      if (bomb.y > 480 && bomb.x >= player.x && bomb.x <= player.x + player.width) {
+        if (!player.shield) {
+          endGame();
+          return false;
+        }
+      }
+      return bomb.y < 500;
+    });
+
+    powerUps = powerUps.filter(p => {
+      if (p.y > 480 && p.x >= player.x && p.x <= player.x + player.width) {
+        player.shield = true;
+        setTimeout(() => player.shield = false, 5000);
+        return false;
+      }
+      return p.y < 500;
+    });
+  }
+
+  function drawGame() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawPlayer();
+    drawBalls();
+    drawBombs();
+    drawPowerUps();
+  }
+
+  function gameLoop() {
+    spawnEntities();
+    moveEntities();
+    checkCollisions();
+    drawGame();
+
+    if (freezeTimer > 0) freezeTimer--;
+    if (freezeTimer === 0) isFrozen = false;
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  function endGame() {
+    fetch(`${apiUrl}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, score })
+    })
+      .then(() => fetchStats())
+      .catch(err => console.error(err));
+
+    alert('Game Over! Your score: ' + score);
+    score = 0;
+    balls = [];
+    bombs = [];
+    powerUps = [];
+  }
+
+  function fetchStats() {
+    fetch(`${apiUrl}/user/${username}`)
+      .then(res => res.json())
+      .then(data => {
+        total = data.total || 0;
+        rank = data.rank || '-';
+        referrals = data.referrals || 0;
+        updateStatsUI();
+      })
+      .catch(console.error);
+  }
+
+  function activateFreeze() {
+    isFrozen = true;
+    freezeTimer = 150; // lasts ~2.5s at 60fps
+  }
+
+  function activateShield() {
+    player.shield = true;
+    setTimeout(() => player.shield = false, 5000);
+  }
+
+  canvas.addEventListener('touchmove', (e) => {
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    player.x = touch.clientX - rect.left - player.width / 2;
+  });
+
+  fetchStats();
+  gameLoop();
+</script>
+
+  </body>
+</html>
